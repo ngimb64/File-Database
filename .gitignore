@@ -1,0 +1,16 @@
+# Pycharm files #
+.idea/
+
+# Ignore all files in Dbs dir #
+Dbs/*
+!Dbs/.keep
+
+# Ignore all files in Dock dir #
+Dock/*
+!Dock/.keep
+
+# Log file #
+FileDbLog.log
+
+# Pycache #
+Modules/__pycache__/

@@ -1,26 +1,20 @@
+# File Database #
+![alt text](https://github.com/ngimb64/File-Database/blob/main/FileDatabase.png?raw=true)
+
 ## Prereqs
-> To make sure this program runs as designed Python 3.8 
-> should be installed. This project has many modules incorporated,
-> some of which are not included by default. Any missing modules
-> have to be installed with PIP before the program can run. I recommend
-> simply enter the module name in search engine and finding the documentation. The 
-> PIP command for installation is usually one of the first things mentioned.
-> Also with Python it is common to have multiple modules with a similar names.
-> So if errors are being raised about not having a certain module it is
-> most likely the wrong module with a similar name to the one that is required
-> was installed instead of the required module.
+> This program runs on Windows and Linux, written in Python 3.9
 
 ## Installation
-> Enter Python downloads in a search engine and obtain version 3.8 from the official website. 
-> Run the installer and follow the default installation procedures. 
-> Also search for any required modules and install them with PIP in Command Prompt.
+> Run the setup.py script to build a virtual environment and install all external packages in the created venv.
+
+> Example:<br>
+> python3 setup.py "venv name"
+
 
 ## Purpose
-> This program is a local file database for storage using MySQL standard query language.
+> This program is a local file storage database for storage using MySQL standard query language.
 
 ## How to use
-- Confirm your email account allows less secure apps (otherwise api call are inhibited)
-- Open up the fileStoreDB.py in a text editor, find the email section , and add username & password
-- Open up Command Prompt (CMD)
+- Open up Command Prompt (CMD) or terminal
 - Enter the directory containing the program and execute in shell
-- Enter password (root) to enter the menu
+- Execute to access the command menu
