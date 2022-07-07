@@ -14,7 +14,7 @@ from pyfiglet import Figlet
 
 # Custom Modules #
 import Modules.Globals as Globals
-from Modules.utils import PasswordInput, PrintErr, QueryHandler,  SystemCmd
+from Modules.utils import PrintErr, QueryHandler,  SystemCmd
 
 
 # Pseudo-Constants #
@@ -106,11 +106,11 @@ def DeleteStorageFile():
 ########################################################################################################################
 Name:       StoreStorageFile
 Purpose:    Stores files in the storage database.
-Parameters: Regex pattern to match file path.
+Parameters: Regex pattern to match file path and path to the current working dir.
 Returns:    Nothing
 ########################################################################################################################
 """
-def StoreStorageFile(path_regex: str):
+def StoreStorageFile(path_regex: str, cwd: str):
     name, ext = [], []
 
     path = input('Enter the absolute path of directory to store files or '
@@ -126,13 +126,11 @@ def StoreStorageFile(path_regex: str):
     # If the user selects the Dock directory #
     if path == '':
         # Get the current working directory and append Dock path #
-        file_path = os.getcwd() + '\\Dock'
-
+        file_path = f'{cwd}\\Dock'
     # If path regex fails #
     elif not re.search(path_regex, path):
         PrintErr(f'Regex failed to match {path} to be stored', 2)
         return
-
     # If proper path was passed in #
     else:
         file_path = path
@@ -232,11 +230,11 @@ def StoreStorageFile(path_regex: str):
 ########################################################################################################################
 Name:       ExtractStorageFile
 Purpose:    Extracts file from the storage database to Dock.
-Parameters: Nothing
+Parameters: Path to current working dir.
 Returns:    Nothing
 ########################################################################################################################
 """
-def ExtractStorageFile():
+def ExtractStorageFile(cwd: str):
     # Prompt user for file name/number and type #
     file_name = input('File name or number to extract?\n')
     file_type = input('\nFile type (TEXT or IMAGE)?\n')
@@ -269,7 +267,7 @@ def ExtractStorageFile():
         # Decode from base64 #
         decoded_text = base64.b64decode(file_string)
         try:
-            with open(f'./Dock/{file_name}', 'wb') as out_file:
+            with open(f'{cwd}/Dock/{file_name}', 'wb') as out_file:
                 out_file.write(decoded_text)
 
         # If file IO error occurs #
@@ -307,20 +305,20 @@ def ListStorageDB():
 ########################################################################################################################
 Name:       MainMenu
 Purpose:    Display command options and receives input on what command to execute.
-Parameters: Command syntax tuple and encrypted password hash.
+Parameters: Command syntax tuple and path to current working dir.
 Returns:    Nothing
 ########################################################################################################################
 """
-def MainMenu(syntax_tuple: tuple):
+def MainMenu(syntax_tuple: tuple, path: str):
     # If OS is Windows #
     if os.name == 'nt':
         # Set path regex and clear display command syntax #
-        re_path = re.compile(r'^[A-Z]:(?:\\[a-zA-Z0-9_\"\' .,\-]{2,256})+')
+        re_path = re.compile(r'^[A-Z]:(?:\\[a-zA-Z\d_\"\' .,\-]{1,30}){1,12}')
         cmd = syntax_tuple[0]
     # If OS is Linux #
     else:
         # Set path regex and clear display command syntax #
-        re_path = re.compile(r'^(?:\\[a-zA-Z0-9_\"\' .,\-]{2,256})+')
+        re_path = re.compile(r'^(?:\\[a-zA-Z\d_\"\' .,\-]{1,30}){1,12}')
         cmd = syntax_tuple[1]
 
     # Set the program name banner #
@@ -352,10 +350,10 @@ def MainMenu(syntax_tuple: tuple):
             ListStorageDB()
         # If file contents are to be retrieved #
         elif prompt == 'o':
-            ExtractStorageFile()
+            ExtractStorageFile(path)
         # If file contents are to be stored #
         elif prompt == 's':
-            StoreStorageFile(re_path)
+            StoreStorageFile(re_path, path)
         # If the file contents are to be deleted #
         elif prompt == 'd':
             DeleteStorageFile()
@@ -381,10 +379,8 @@ Returns:    Nothing
 def main():
     # Commands tuple #
     cmds = ('cls', 'clear')
-
-    # TODO tie password system to encryption, add logging system tied to encryption
-    # Confirm or set users password #
-    # password = PasswordInput(cmds)
+    # Get current working directory #
+    cwd = os.getcwd()
 
     # Iterate through program dirs #
     for db in ('Dock', 'Dbs'):
@@ -398,17 +394,17 @@ def main():
         # Confirm database exists #
         dburi = 'file:{}?mode=rw'.format(pathname2url(f'{DB_NAME}.db'))
         sqlite3.connect(dburi, uri=True)
-        os.chdir('..')
+        os.chdir(cwd)
 
     # If storage database does not exist #
     except sqlite3.OperationalError:
-        os.chdir('..')
+        os.chdir(cwd)
         # Format storage database creation query #
         create_query = Globals.DB_STORAGE(DB_NAME)
         # Create storage database #
         QueryHandler(DB_NAME, create_query, create=True)
 
-    MainMenu(cmds)
+    MainMenu(cmds, cwd)
 
 
 if __name__ == '__main__':
