@@ -42,10 +42,10 @@ main  -  Prompts user for password to access database, ensures critical director
 Name:       GetFileNameFromIndex
 Purpose:    Finds file name in storage location based on passed in index.
 Parameters: The integer representing the row in the storage database where the file is stored.
-Returns:    The actual file name.
+Returns:    The actual file name on success and None on failure.
 ########################################################################################################################
 """
-def GetFilenameFromIndex(file: int) -> str:
+def GetFilenameFromIndex(file: int):
     # Format query to list all the contents of storage database #
     list_query = Globals.DB_CONTENTS(DB_NAME)
     # Execute query to list the contents of storage database #
@@ -110,12 +110,12 @@ Parameters: Regex pattern to match file path and path to the current working dir
 Returns:    Nothing
 ########################################################################################################################
 """
-def StoreStorageFile(path_regex: str, cwd: str):
+def StoreStorageFile(path_regex, curr_path: str):
     name, ext = [], []
 
-    path = input('Enter the absolute path of directory to store files or '
-                 'hit enter to store files from the Dock directory:\n')
-    prompt = input('\nShould the files being stored be deleted after storage operation? ')
+    store_path = input('Enter the absolute path of directory to store files or '
+                       'hit enter to store files from the Dock directory:\n')
+    prompt = input('\nShould the files being stored be deleted after storage operation (y or n)? ')
     print('')
 
     # If one of the options was not selected #
@@ -124,51 +124,67 @@ def StoreStorageFile(path_regex: str, cwd: str):
         return
 
     # If the user selects the Dock directory #
-    if path == '':
+    if store_path == '':
         # Get the current working directory and append Dock path #
-        file_path = f'{cwd}\\Dock'
+        file_path = f'{curr_path}Dock'
     # If path regex fails #
-    elif not re.search(path_regex, path):
-        PrintErr(f'Regex failed to match {path} to be stored', 2)
+    elif not re.search(path_regex, store_path):
+        PrintErr(f'Regex failed to match {store_path} to be stored', 2)
         return
     # If proper path was passed in #
     else:
-        file_path = path
+        file_path = store_path
 
-    print(f'Storing files in {file_path}:\n{(19 + len(file_path)) * "*"}\n')
-
-    # Iterate recursively through the file names in path
-    for _, _, filenames in os.walk(file_path):
-        for file in filenames:
-            # Split the file name and extension #
-            res = file.split('.')
-
-            # If the filename contains more than one period for extension #
-            if not re.search(r'^[^.]{1,30}\.[a-z]{2,4}$', file):
-                # Append the last member in list as extension #
-                ext.append(res[-1])
-                # Remove the extension from list #
-                e = res.pop()
-
-                parse_name = ''
-                # Iterate through split chunks #
-                for chunk in res:
-                    # Append chunk to result name #
-                    parse_name += chunk
-
-                # Append fixed name to list #
-                name.append(parse_name)
-                # Rename the file to new name #
-                os.rename(f'{file_path}\\{file}', f'{file_path}\\{parse_name}.{e}')
-            else:
-                # Append name to name list #
-                name.append(res[0])
-                # Append extension to extension list #
-                ext.append(res[1])
-
+    allowed_ext = ('.txt', '.py', '.html', '.jpg', '.png', '.jpeg')
     extensions = {'txt': 'TEXT', 'py': 'TEXT',
                   'html': 'TEXT', 'jpg': 'IMAGE',
                   'png': 'IMAGE', 'jpeg': 'IMAGE'}
+
+    print(f'Storing files in {file_path}:\n{(19 + len(file_path)) * "*"}\n')
+
+    # Iterate through the file names in path #
+    for file in os.scandir(file_path):
+        # If file does not have supported file type #
+        if not file.name.endswith(allowed_ext):
+            continue
+
+        # Split the file name and extension #
+        res = file.name.split('.')
+
+        # If the filename contains more than one period for extension #
+        if not re.search(r'^[^.]{1,30}\.[a-z]{2,4}$', file.name):
+            # Append the last member in list as extension #
+            ext.append(res[-1])
+            # Remove the extension from list #
+            e = res.pop()
+
+            parse_name = ''
+            # Iterate through split chunks #
+            for chunk in res:
+                # Append chunk to result name #
+                parse_name += chunk
+
+            # Append fixed name to list #
+            name.append(parse_name)
+
+            # If the OS is Windows #
+            if os.name == 'nt':
+                src_file = f'{file_path}\\{file.name}'
+                dest_file = f'{file_path}\\{parse_name}.{e}'
+            # If the OS is Linux #
+            else:
+                src_file = f'{file_path}/{file.name}'
+                dest_file = f'{file_path}/{parse_name}.{e}'
+
+            # Rename the file to new name #
+            os.rename(src_file, dest_file)
+
+        # If the file name only has a single period for file ext #
+        else:
+            # Append name to name list #
+            name.append(res[0])
+            # Append extension to extension list #
+            ext.append(res[1])
 
     # Iterate through file names and extensions #
     for n, e in zip(name, ext):
@@ -177,11 +193,16 @@ def StoreStorageFile(path_regex: str, cwd: str):
             ext_type = extensions[e]
         # If file extension not in defined dict #
         else:
-            PrintErr('Improper file extension format', 2)
+            PrintErr(f'File {n} has extension type {e} that is not supported', 2)
             return
 
-        # Format file path of current iteration #
-        current_file = f'{file_path}\\{n}.{e}'
+        # If the OS is Windows #
+        if os.name == 'nt':
+            # Format file path of current iteration #
+            current_file = f'{file_path}\\{n}.{e}'
+        # If the OS is Linux #
+        else:
+            current_file = f'{file_path}/{n}.{e}'
 
         # If image file #
         if ext_type == 'IMAGE':
@@ -221,7 +242,7 @@ def StoreStorageFile(path_regex: str, cwd: str):
         # If the user wants the files deleted after storage #
         if prompt == 'y':
             # Delete the current file #
-            os.remove(f'{file_path}\\{n}.{e}')
+            os.remove(current_file)
 
     print(f'\n$ All files in {file_path} have been stored in {DB_NAME} database $')
 
@@ -234,7 +255,7 @@ Parameters: Path to current working dir.
 Returns:    Nothing
 ########################################################################################################################
 """
-def ExtractStorageFile(cwd: str):
+def ExtractStorageFile(file_path: str):
     # Prompt user for file name/number and type #
     file_name = input('File name or number to extract?\n')
     file_type = input('\nFile type (TEXT or IMAGE)?\n')
@@ -263,15 +284,22 @@ def ExtractStorageFile(cwd: str):
     if row[2] == file_type:
         # Set the file string the content column in retrieved row #
         file_string = row[3]
-
         # Decode from base64 #
         decoded_text = base64.b64decode(file_string)
+
+        # If the OS is Windows #
+        if os.name == 'nt':
+            extract_path = f'{file_path}Dock\\{file_name}'
+        # If the OS is Linux #
+        else:
+            extract_path = f'{file_path}Dock/{file_name}'
+
         try:
-            with open(f'{cwd}/Dock/{file_name}', 'wb') as out_file:
+            with open(extract_path, 'wb') as out_file:
                 out_file.write(decoded_text)
 
         # If file IO error occurs #
-        except IOError as io_err:
+        except (IOError, OSError) as io_err:
             PrintErr(f'File IO error occurred - {io_err}', 2)
             return
     # If there is a file extension mismatch #
@@ -309,16 +337,16 @@ Parameters: Command syntax tuple and path to current working dir.
 Returns:    Nothing
 ########################################################################################################################
 """
-def MainMenu(syntax_tuple: tuple, path: str):
+def MainMenu(syntax_tuple: tuple, current_path: str):
     # If OS is Windows #
     if os.name == 'nt':
         # Set path regex and clear display command syntax #
-        re_path = re.compile(r'^[A-Z]:(?:\\[a-zA-Z\d_\"\' .,\-]{1,30}){1,12}')
+        re_path = re.compile(r'^[A-Z]:(?:\\[a-zA-Z\d_\"\' .,-]{1,30}){1,12}')
         cmd = syntax_tuple[0]
     # If OS is Linux #
     else:
         # Set path regex and clear display command syntax #
-        re_path = re.compile(r'^(?:\\[a-zA-Z\d_\"\' .,\-]{1,30}){1,12}')
+        re_path = re.compile(r'^(?:/[a-zA-Z\d_\"\' .,-]{1,30}){1,12}')
         cmd = syntax_tuple[1]
 
     # Set the program name banner #
@@ -350,10 +378,10 @@ def MainMenu(syntax_tuple: tuple, path: str):
             ListStorageDB()
         # If file contents are to be retrieved #
         elif prompt == 'o':
-            ExtractStorageFile(path)
+            ExtractStorageFile(current_path)
         # If file contents are to be stored #
         elif prompt == 's':
-            StoreStorageFile(re_path, path)
+            StoreStorageFile(re_path, current_path)
         # If the file contents are to be deleted #
         elif prompt == 'd':
             DeleteStorageFile()
@@ -379,8 +407,6 @@ Returns:    Nothing
 def main():
     # Commands tuple #
     cmds = ('cls', 'clear')
-    # Get current working directory #
-    cwd = os.getcwd()
 
     # Iterate through program dirs #
     for db in ('Dock', 'Dbs'):
@@ -392,7 +418,7 @@ def main():
     try:
         os.chdir('Dbs')
         # Confirm database exists #
-        dburi = 'file:{}?mode=rw'.format(pathname2url(f'{DB_NAME}.db'))
+        dburi = 'file:{0}?mode=rw'.format(pathname2url(f'{DB_NAME}.db'))
         sqlite3.connect(dburi, uri=True)
         os.chdir(cwd)
 
@@ -404,12 +430,21 @@ def main():
         # Create storage database #
         QueryHandler(DB_NAME, create_query, create=True)
 
-    MainMenu(cmds, cwd)
+    MainMenu(cmds, path)
 
 
 if __name__ == '__main__':
+    # Get the current working directory #
+    cwd = os.getcwd()
+
+    # If the OS is Windows #
+    if os.name == 'nt':
+        path = f'{cwd}\\'
+    else:
+        path = f'{cwd}/'
+
     # Set the log file name #
-    logging.basicConfig(level=logging.DEBUG, filename='.\\FileDbLog.log')
+    logging.basicConfig(level=logging.DEBUG, filename=f'{path}FileDbLog.log')
 
     while True:
         try:

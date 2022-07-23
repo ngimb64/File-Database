@@ -26,10 +26,10 @@ SystemCmd  -  Execute shell-escaped system command.
 Name        PrintErr
 Purpose:    Displays error message for supplied time interval.
 Parameters: The message to be displayed and the time interval to be displayed in seconds.
-Returns:    None
+Returns:    Nothing
 ########################################################################################################################
 """
-def PrintErr(msg: str, seconds: int):
+def PrintErr(msg: str, seconds):
     print(f'\n* [ERROR] {msg} *\n', file=sys.stderr)
     time.sleep(seconds)
 
@@ -40,16 +40,16 @@ Name:       QueryHandler
 Purpose:    Facilitates MySQL database query execution.
 Parameters: Database to execute query, query to be executed, hashed password, create toggle, fetchone toggle, and \
             fetchall toggle.
-Returns:    None
+Returns:    Nothing
 ########################################################################################################################
 """
 def QueryHandler(db: str, query: str, create=False, fetchone=False, fetchall=False):
     # Change directory #
     os.chdir('Dbs')
     # Sets maximum number of allowed db connections #
-    maxConns = 1
+    max_conns = 1
     # Locks allowed connections to database #
-    sema_lock = BoundedSemaphore(value=maxConns)
+    sema_lock = BoundedSemaphore(value=max_conns)
 
     # Attempts to connect, continues if already connected #
     with sema_lock:
@@ -109,16 +109,15 @@ def QueryHandler(db: str, query: str, create=False, fetchone=False, fetchall=Fal
 Name:       SystemCmd
 Purpose:    Execute shell-escaped system command.
 Parameters: Command to be executed, standard output, standard error, execution timeout.
-Returns:    None
+Returns:    Nothing
 ########################################################################################################################
 """
 def SystemCmd(cmd: str, stdout, stderr, exec_time: int):
-    # Shell escape command string #
-    exe = shlex.quote(cmd)
-
-    command = Popen(exe, stdout=stdout, stderr=stderr, shell=True)
+    # Create the subprocess instance #
+    command = Popen(cmd, stdout=stdout, stderr=stderr, shell=True)
     try:
-        command.communicate(exec_time)
+        # Execute command #
+        command.communicate(timeout=exec_time)
 
     # Handles process timeouts and errors #
     except (SubprocessError, TimeoutExpired, CalledProcessError, OSError, ValueError):
