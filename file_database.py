@@ -1,4 +1,5 @@
-# Built-In Modules #
+# pylint: disable=W0106,E1101
+""" Built-in modules """
 import base64
 import logging
 import os
@@ -7,54 +8,33 @@ import sqlite3
 import sys
 import time
 from urllib.request import pathname2url
-
 # External Modules #
 import cv2
 from pyfiglet import Figlet
-
 # Custom Modules #
-import Modules.Globals as Globals
-from Modules.Utils import PrintErr, QueryHandler,  SystemCmd
+import Modules.globals as globs
+from Modules.utils import print_err, query_handler,  system_cmd
 
 
 # Pseudo-Constants #
 DB_NAME = 'Storage'
 
 
-"""
-################
-Function Index #
-########################################################################################################################
-GetFileNameFromIndex  -  Finds file name in storage location based on passed in index.
-DeleteStorageFile  -  Delete file stored in the storage database.
-StoreStorageFile  -  Stores file in the storage database.
-ExtractStorageFile  -  Extracts file from the storage database to Dock.
-ListStorageDB  -  Queries database for list of all files and displays as enumerated list to the user.
-MainMenu  -  Display command options and receives input on what command to execute.
-main  -  Prompts user for password to access database, ensures critical directories are created, checks id database \
-         exists & creates if non-existent, and calls MainMenu().
-########################################################################################################################
-"""
+def get_by_index(file: int):
+    """
+    Finds file name in storage location based on passed in index.
 
-
-"""
-########################################################################################################################
-Name:       GetFileNameFromIndex
-Purpose:    Finds file name in storage location based on passed in index.
-Parameters: The integer representing the row in the storage database where the file is stored.
-Returns:    The actual file name on success and None on failure.
-########################################################################################################################
-"""
-def GetFilenameFromIndex(file: int):
+    :param file:  The integer representing the row in the storage database where the file is stored.
+    :return: The actual file name on success and prints error on failure.
+    """
     # Format query to list all the contents of storage database #
-    list_query = Globals.DB_CONTENTS(DB_NAME)
+    list_query = globs.db_contents(DB_NAME)
     # Execute query to list the contents of storage database #
-    rows = QueryHandler(DB_NAME, list_query, fetchall=True)
+    rows = query_handler(DB_NAME, list_query, fetchall=True)
 
     # If no rows are returned #
     if not rows:
-        PrintErr(f'Database - {DB_NAME} database is empty', 2)
-        return
+        return print_err(f'Database - {DB_NAME} database is empty', 2)
 
     files = []
     # Populate file names from db to list #
@@ -65,52 +45,46 @@ def GetFilenameFromIndex(file: int):
         filename = files[file]
     # If trying to access index that does not exist #
     except IndexError as index_err:
-        PrintErr(f'Index error - {index_err}', 2)
-        return
+        return print_err(f'Index error - {index_err}', 2)
 
     return filename
 
 
-"""
-########################################################################################################################
-Name:       DeleteStorageFile
-Purpose:    Delete file stored in the storage database.
-Parameters: Nothing
-Returns:    Nothing
-########################################################################################################################
-"""
-def DeleteStorageFile():
+def delete_file():
+    """
+    Delete file stored in the storage database.
+
+    :return:  Prints success or error message.
+    """
     # Prompt user for file name/number and type #
     file_name = input('File name or number to delete?\n')
     file_type = input('\nFile type (TEXT or IMAGE)?\n')
 
     # If the file type is not in options #
     if file_type not in ('TEXT', 'IMAGE'):
-        PrintErr(f'Invalid input detected => {file_type}', 2)
-        return
+        return print_err(f'Invalid input detected => {file_type}', 2)
 
     # If the user entered a number #
     if file_name.isdigit():
         # Get the file name from specified row index #
-        file_name = GetFilenameFromIndex(int(file_name))
+        file_name = get_by_index(int(file_name))
 
     # Format query to delete item in storage database #
-    delete_query = Globals.DB_DELETE(DB_NAME, file_name)
+    delete_query = globs.db_delete(DB_NAME, file_name)
     # Execute query to delete item in storage database #
-    QueryHandler(DB_NAME, delete_query)
+    query_handler(DB_NAME, delete_query)
 
-    print(f'\n$ {file_name} has been successfully deleted from {DB_NAME} database $')
+    return print(f'\n$ {file_name} has been successfully deleted from {DB_NAME} database $')
 
 
-"""
-########################################################################################################################
-Name:       StoreStorageFile
-Purpose:    Stores files in the storage database.
-Parameters: Regex pattern to match file path and path to the current working dir.
-Returns:    Nothing
-########################################################################################################################
-"""
-def StoreStorageFile(path_regex, curr_path: str):
+def store_file(path_regex, curr_path: str):
+    """
+    Stores files in the storage database.
+
+    :param path_regex:  Compiled regex pattern to match file path.
+    :param curr_path:  Path to the current working directory.
+    :return:  Prints success or error message.
+    """
     name, ext = [], []
 
     store_path = input('Enter the absolute path of directory to store files or '
@@ -120,8 +94,7 @@ def StoreStorageFile(path_regex, curr_path: str):
 
     # If one of the options was not selected #
     if prompt not in ('y', 'n'):
-        PrintErr('Improper input, pick y or n', 2)
-        return
+        return print_err('Improper input, pick y or n', 2)
 
     # If the user selects the Dock directory #
     if store_path == '':
@@ -129,8 +102,7 @@ def StoreStorageFile(path_regex, curr_path: str):
         file_path = f'{curr_path}Dock'
     # If path regex fails #
     elif not re.search(path_regex, store_path):
-        PrintErr(f'Regex failed to match {store_path} to be stored', 2)
-        return
+        return print_err(f'Regex failed to match {store_path} to be stored', 2)
     # If proper path was passed in #
     else:
         file_path = store_path
@@ -153,16 +125,13 @@ def StoreStorageFile(path_regex, curr_path: str):
 
         # If the filename contains more than one period for extension #
         if not re.search(r'^[^.]{1,30}\.[a-z]{2,4}$', file.name):
-            # Append the last member in list as extension #
-            ext.append(res[-1])
             # Remove the extension from list #
-            e = res.pop()
+            file_ext = res.pop()
+            # Append the last member in list as extension #
+            ext.append(file_ext)
 
-            parse_name = ''
-            # Iterate through split chunks #
-            for chunk in res:
-                # Append chunk to result name #
-                parse_name += chunk
+            # Re-append remaining name #
+            parse_name = ''.join(res)
 
             # Append fixed name to list #
             name.append(parse_name)
@@ -170,11 +139,11 @@ def StoreStorageFile(path_regex, curr_path: str):
             # If the OS is Windows #
             if os.name == 'nt':
                 src_file = f'{file_path}\\{file.name}'
-                dest_file = f'{file_path}\\{parse_name}.{e}'
+                dest_file = f'{file_path}\\{parse_name}.{file_ext}'
             # If the OS is Linux #
             else:
                 src_file = f'{file_path}/{file.name}'
-                dest_file = f'{file_path}/{parse_name}.{e}'
+                dest_file = f'{file_path}/{parse_name}.{file_ext}'
 
             # Rename the file to new name #
             os.rename(src_file, dest_file)
@@ -187,22 +156,21 @@ def StoreStorageFile(path_regex, curr_path: str):
             ext.append(res[1])
 
     # Iterate through file names and extensions #
-    for n, e in zip(name, ext):
+    for file_name, file_ext in zip(name, ext):
         # If current file extension in defined dict #
-        if e in extensions.keys():
-            ext_type = extensions[e]
+        if file_ext in extensions:
+            ext_type = extensions[file_ext]
         # If file extension not in defined dict #
         else:
-            PrintErr(f'File {n} has extension type {e} that is not supported', 2)
-            return
-
+            return print_err(f'File {file_name} has extension type '
+                             f'{file_ext} that is not supported', 2)
         # If the OS is Windows #
         if os.name == 'nt':
             # Format file path of current iteration #
-            current_file = f'{file_path}\\{n}.{e}'
+            current_file = f'{file_path}\\{file_name}.{file_ext}'
         # If the OS is Linux #
         else:
-            current_file = f'{file_path}/{n}.{e}'
+            current_file = f'{file_path}/{file_name}.{file_ext}'
 
         # If image file #
         if ext_type == 'IMAGE':
@@ -210,18 +178,17 @@ def StoreStorageFile(path_regex, curr_path: str):
             img = cv2.imread(current_file)
 
             # If jpg image #
-            if e == 'jpg':
+            if file_ext == 'jpg':
                 file_string = base64.b64encode(cv2.imencode('.jpg', img)[1])
             # If jpeg image #
-            elif e == 'jpeg':
+            elif file_ext == 'jpeg':
                 file_string = base64.b64encode(cv2.imencode('.jpeg', img)[1])
             # If png image #
-            elif e == 'png':
+            elif file_ext == 'png':
                 file_string = base64.b64encode(cv2.imencode('.png', img)[1])
             # If unsupported image type #
             else:
-                PrintErr('Image type error - Unsupported image file type detected', 2)
-                return
+                return print_err('Image type error - Unsupported image file type detected', 2)
 
         # If text file #
         elif ext_type == 'TEXT':
@@ -230,55 +197,51 @@ def StoreStorageFile(path_regex, curr_path: str):
 
         # For other file types #
         else:
-            PrintErr('Improper type - Unsupported file extension type detected', 2)
-            return
+            return print_err('Improper type - Unsupported file extension type detected', 2)
 
-        insert_query = Globals.DB_STORE(DB_NAME, f'{n}.{e}', file_path, ext_type, file_string.decode())
-        QueryHandler(DB_NAME, insert_query)
+        insert_query = globs.db_store(DB_NAME, f'{file_name}.{file_ext}', file_path,
+                                      ext_type, file_string.decode())
+        query_handler(DB_NAME, insert_query)
 
         # Print success and delete stored file from Dock #
-        print(f'File => {n}.{e} Stored')
+        print(f'File => {file_name}.{file_ext} Stored')
 
         # If the user wants the files deleted after storage #
         if prompt == 'y':
             # Delete the current file #
             os.remove(current_file)
 
-    print(f'\n$ All files in {file_path} have been stored in {DB_NAME} database $')
+    return print(f'\n$ All files in {file_path} have been stored in {DB_NAME} database $')
 
 
-"""
-########################################################################################################################
-Name:       ExtractStorageFile
-Purpose:    Extracts file from the storage database to Dock.
-Parameters: Path to current working dir.
-Returns:    Nothing
-########################################################################################################################
-"""
-def ExtractStorageFile(file_path: str):
+def extract_file(file_path: str):
+    """
+    Extracts file from the storage database to Dock.
+
+    :param file_path:  The path to the current working directory.
+    :return:  Prints success or error message.
+    """
     # Prompt user for file name/number and type #
     file_name = input('File name or number to extract?\n')
     file_type = input('\nFile type (TEXT or IMAGE)?\n')
 
     # If the file type is not in options #
     if file_type not in ('TEXT', 'IMAGE'):
-        PrintErr(f'Invalid input detected => {file_type}', 2)
-        return
+        return print_err(f'Invalid input detected => {file_type}', 2)
 
     # If the user entered a number #
     if file_name.isdigit():
         # Get the file name from specified row index #
-        file_name = GetFilenameFromIndex(int(file_name))
+        file_name = get_by_index(int(file_name))
 
     # Format query to list all the contents of storage database #
-    item_query = Globals.DB_RETRIEVE(DB_NAME, file_name)
+    item_query = globs.db_retrieve(DB_NAME, file_name)
     # Execute query to list the contents of storage database #
-    row = QueryHandler(DB_NAME, item_query, fetchone=True)
+    row = query_handler(DB_NAME, item_query, fetchone=True)
 
     # If entry in storage database was noe retrieved #
     if not row:
-        PrintErr('Database - Queried database entry does not exist', 2)
-        return
+        return print_err('Database - Queried database entry does not exist', 2)
 
     # If the retrieved rows file extension is the same as users input #
     if row[2] == file_type:
@@ -300,44 +263,38 @@ def ExtractStorageFile(file_path: str):
 
         # If file IO error occurs #
         except (IOError, OSError) as io_err:
-            PrintErr(f'File IO error occurred - {io_err}', 2)
-            return
+            return print_err(f'File IO error occurred - {io_err}', 2)
     # If there is a file extension mismatch #
     else:
-        PrintErr(f'File type - Improper file extension entered for file name {row[2]}', 2)
-        return
+        return print_err(f'File type - Improper file extension entered for file name {row[2]}', 2)
 
-    print(f'\n$ {file_name} successfully extracted from {DB_NAME} database $')
+    return print(f'\n$ {file_name} successfully extracted from {DB_NAME} database $')
 
 
-"""
-########################################################################################################################
-Name:       ListStorageDB
-Purpose:    Queries database for list of all files and displays as enumerated list to the user.
-Parameters: Nothing
-Returns:    Nothing
-########################################################################################################################
-"""
-def ListStorageDB():
+def list_storage():
+    """
+    Queries database for list of all files and displays as enumerated list to the user.
+
+    :return:  Nothing
+    """
     # Format query to list all the contents of storage database #
-    list_query = Globals.DB_CONTENTS(DB_NAME)
+    list_query = globs.db_contents(DB_NAME)
     # Execute query to list the contents of storage database #
-    rows = QueryHandler(DB_NAME, list_query, fetchall=True)
+    rows = query_handler(DB_NAME, list_query, fetchall=True)
 
     print('\nFiles Available:\n-=-=-=-=-=-=-=-=-=->')
     [print(f'{index}  =>  {row[0]}') for index, row in enumerate(rows)]
     time.sleep(3)
 
 
-"""
-########################################################################################################################
-Name:       MainMenu
-Purpose:    Display command options and receives input on what command to execute.
-Parameters: Command syntax tuple and path to current working dir.
-Returns:    Nothing
-########################################################################################################################
-"""
-def MainMenu(syntax_tuple: tuple, current_path: str):
+def main_menu(syntax_tuple: tuple, current_path: str):
+    """
+    Display command options and receives input on what command to execute.
+
+    :param syntax_tuple:  Command syntax tuple.
+    :param current_path:  Path to current working directory.
+    :return:  Nothing
+    """
     # If OS is Windows #
     if os.name == 'nt':
         # Set path regex and clear display command syntax #
@@ -354,7 +311,7 @@ def MainMenu(syntax_tuple: tuple, current_path: str):
 
     while True:
         # Clears screen per loop for clean display #
-        SystemCmd(cmd, None, None, 2)
+        system_cmd(cmd, None, None, 2)
 
         # Print the program name banner #
         print(custom_fig.renderText('$ File Database $'))
@@ -375,50 +332,48 @@ def MainMenu(syntax_tuple: tuple, current_path: str):
 
         # If db contents are to be listed #
         if prompt == 'l':
-            ListStorageDB()
+            list_storage()
         # If file contents are to be retrieved #
         elif prompt == 'o':
-            ExtractStorageFile(current_path)
+            extract_file(current_path)
         # If file contents are to be stored #
         elif prompt == 's':
-            StoreStorageFile(re_path, current_path)
+            store_file(re_path, current_path)
         # If the file contents are to be deleted #
         elif prompt == 'd':
-            DeleteStorageFile()
+            delete_file()
         # If the program is to be exited #
         elif prompt == 'e':
             sys.exit(0)
         # If improper operation was supplied #
         else:
-            PrintErr('Improper operation specified', 0.5)
+            print_err('Improper operation specified', 0.5)
 
         time.sleep(2)
 
 
-"""
-########################################################################################################################
-Name:       main
-Purpose:    Ensures critical directories are created, checks id database exists & creates if non-existent, \
-            and calls MainMenu().
-Parameters: Nothing
-Returns:    Nothing
-########################################################################################################################
-"""
 def main():
+    """
+    Ensures critical directories are created, checks id database exists & creates if non-existent, \
+    and calls MainMenu().
+
+    :return:  Nothing
+    """
     # Commands tuple #
     cmds = ('cls', 'clear')
 
     # Iterate through program dirs #
-    for db in ('Dock', 'Dbs'):
+    for curr_db in ('Dock', 'Dbs'):
         # If the directory does not exist #
-        if not Globals.DIR_CHECK(db):
+        if not globs.dir_check(curr_db):
             # Create the missing dir #
-            os.mkdir(db)
+            os.mkdir(curr_db)
 
     try:
         os.chdir('Dbs')
         # Confirm database exists #
-        dburi = 'file:{0}?mode=rw'.format(pathname2url(f'{DB_NAME}.db'))
+        db_name = f'{DB_NAME}.db'
+        dburi = f'file:{pathname2url(db_name)}?mode=rw'
         sqlite3.connect(dburi, uri=True)
         os.chdir(cwd)
 
@@ -426,11 +381,11 @@ def main():
     except sqlite3.OperationalError:
         os.chdir(cwd)
         # Format storage database creation query #
-        create_query = Globals.DB_STORAGE(DB_NAME)
+        create_query = globs.db_storage(DB_NAME)
         # Create storage database #
-        QueryHandler(DB_NAME, create_query, create=True)
+        query_handler(DB_NAME, create_query, create=True)
 
-    MainMenu(cmds, path)
+    main_menu(cmds, path)
 
 
 if __name__ == '__main__':
@@ -457,8 +412,8 @@ if __name__ == '__main__':
 
         # Unknown exception handler #
         except Exception as err:
-            PrintErr(f'Unknown exception occurred - {err}', 2)
-            logging.exception(f'Unknown exception occurred - {err}\n\n')
+            print_err(f'Unknown exception occurred - {err}', 2)
+            logging.exception('Unknown exception occurred - %s\n\n', err)
             continue
 
     sys.exit(0)
