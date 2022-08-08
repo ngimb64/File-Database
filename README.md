@@ -4,7 +4,7 @@
 
 &#9745;&#65039; Bandit verified<br>
 &#9745;&#65039; Synk verified<br>
-&#9745;&#65039; Pylint verified 9.79
+&#9745;&#65039; Pylint verified 9.79/10
 
 ## Prereqs
 This program runs on Windows and Linux, written in Python 3.9
