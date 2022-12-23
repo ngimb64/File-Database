@@ -1,4 +1,4 @@
-# pylint: disable=W0106,E1101
+# pylint: disable=W0106,E1101,E0401
 """ Built-in modules """
 import base64
 import logging
@@ -7,53 +7,60 @@ import re
 import sqlite3
 import sys
 import time
+from pathlib import Path
+from shlex import quote
+from threading import BoundedSemaphore
 from urllib.request import pathname2url
 # External Modules #
 import cv2
 from pyfiglet import Figlet
 # Custom Modules #
-import Modules.globals as globs
-from Modules.utils import print_err, query_handler,  system_cmd
+from Modules.utils import DbConnectionHandler, db_error_query, query_select_all, \
+                          query_item_delete, query_item_fetch, query_db_create, query_store_item, \
+                          print_err, query_handler
 
 
-# Pseudo-Constants #
-DB_NAME = 'Storage'
+# Global variables #
+DB_NAME = 'storage'
 
 
-def get_by_index(file: int):
+def get_by_index(file: int, db_conn: sqlite3):
     """
     Finds file name in storage location based on passed in index.
 
     :param file:  The integer representing the row in the storage database where the file is stored.
+    :param db_conn:  The protected database connection to be interacted with.
     :return: The actual file name on success and prints error on failure.
     """
-    # Format query to list all the contents of storage database #
-    list_query = globs.db_contents(DB_NAME)
+    # Get formatted query to retrieve the contents of database #
+    list_query = query_select_all()
     # Execute query to list the contents of storage database #
-    rows = query_handler(DB_NAME, list_query, fetchall=True)
+    rows = query_handler(db_conn, list_query, fetch='all')
 
     # If no rows are returned #
     if not rows:
-        return print_err(f'Database - {DB_NAME} database is empty', 2)
+        return print_err(f'{DB_NAME} database currently has no data stored in it', 2)
 
-    files = []
     # Populate file names from db to list #
-    [files.append(row[0]) for row in rows]
+    files = [row[0] for row in rows]
 
     try:
         # Assign file name with full path as designated index #
         filename = files[file]
+
     # If trying to access index that does not exist #
     except IndexError as index_err:
-        return print_err(f'Index error - {index_err}', 2)
+        logging.error('Index error accessing file index: %s\n\n', index_err)
+        return print_err(f'Index error accessing file index: {index_err}', 2)
 
     return filename
 
 
-def delete_file():
+def delete_file(db_conn: sqlite3):
     """
     Delete file stored in the storage database.
 
+    :param db_conn:  The protected database connection to be interacted with.
     :return:  Prints success or error message.
     """
     # Prompt user for file name/number and type #
@@ -62,27 +69,27 @@ def delete_file():
 
     # If the file type is not in options #
     if file_type not in ('TEXT', 'IMAGE'):
-        return print_err(f'Invalid input detected => {file_type}', 2)
+        return print_err(f'Invalid input detected: {file_type}', 2)
 
     # If the user entered a number #
     if file_name.isdigit():
         # Get the file name from specified row index #
-        file_name = get_by_index(int(file_name))
+        file_name = get_by_index(int(file_name), db_conn)
 
-    # Format query to delete item in storage database #
-    delete_query = globs.db_delete(DB_NAME, file_name)
+    # Get formatted query to delete item from database #
+    delete_query = query_item_delete()
     # Execute query to delete item in storage database #
-    query_handler(DB_NAME, delete_query)
+    query_handler(db_conn, delete_query, file_name)
 
-    return print(f'\n$ {file_name} has been successfully deleted from {DB_NAME} database $')
+    return print(f'\n[!] {file_name} has been successfully deleted from {DB_NAME} database')
 
 
-def store_file(path_regex, curr_path: str):
+def store_file(path_regex, db_conn: sqlite3):
     """
     Stores files in the storage database.
 
     :param path_regex:  Compiled regex pattern to match file path.
-    :param curr_path:  Path to the current working directory.
+    :param db_conn:  The protected database connection to be interacted with.
     :return:  Prints success or error message.
     """
     name, ext = [], []
@@ -94,28 +101,29 @@ def store_file(path_regex, curr_path: str):
 
     # If one of the options was not selected #
     if prompt not in ('y', 'n'):
-        return print_err('Improper input, pick y or n', 2)
+        return print_err('Improper input .. pick y or n', 2)
 
     # If the user selects the Dock directory #
     if store_path == '':
         # Get the current working directory and append Dock path #
-        file_path = f'{curr_path}Dock'
+        file_path = curr_path / 'Dock'
     # If path regex fails #
     elif not re.search(path_regex, store_path):
-        return print_err(f'Regex failed to match {store_path} to be stored', 2)
+        # Return error #
+        return print_err(f'Regex failed to match path to be stored: {store_path}', 2)
     # If proper path was passed in #
     else:
-        file_path = store_path
+        file_path = Path(store_path)
 
     allowed_ext = ('.txt', '.py', '.html', '.jpg', '.png', '.jpeg')
-    extensions = {'txt': 'TEXT', 'py': 'TEXT',
-                  'html': 'TEXT', 'jpg': 'IMAGE',
+    extensions = {'txt': 'TEXT', 'py': 'TEXT', 'html': 'TEXT', 'jpg': 'IMAGE',
                   'png': 'IMAGE', 'jpeg': 'IMAGE'}
 
-    print(f'Storing files in {file_path}:\n{(19 + len(file_path)) * "*"}\n')
+    print(f'Storing files in {str(file_path.resolve())}:\n'
+          f'{(19 + len(str(file_path.resolve()))) * "*"}\n')
 
     # Iterate through the file names in path #
-    for file in os.scandir(file_path):
+    for file in os.scandir(str(file_path.resolve())):
         # If file does not have supported file type #
         if not file.name.endswith(allowed_ext):
             continue
@@ -129,24 +137,15 @@ def store_file(path_regex, curr_path: str):
             file_ext = res.pop()
             # Append the last member in list as extension #
             ext.append(file_ext)
-
             # Re-append remaining name #
             parse_name = ''.join(res)
-
             # Append fixed name to list #
             name.append(parse_name)
-
-            # If the OS is Windows #
-            if os.name == 'nt':
-                src_file = f'{file_path}\\{file.name}'
-                dest_file = f'{file_path}\\{parse_name}.{file_ext}'
-            # If the OS is Linux #
-            else:
-                src_file = f'{file_path}/{file.name}'
-                dest_file = f'{file_path}/{parse_name}.{file_ext}'
-
+            # Format the new path with parsed data #
+            src_file = file_path / file.name
+            dest_file = file_path / f'{parse_name}.{file_ext}'
             # Rename the file to new name #
-            os.rename(src_file, dest_file)
+            os.rename(str(src_file.resolve()), str(dest_file.resolve()))
 
         # If the file name only has a single period for file ext #
         else:
@@ -164,18 +163,14 @@ def store_file(path_regex, curr_path: str):
         else:
             return print_err(f'File {file_name} has extension type '
                              f'{file_ext} that is not supported', 2)
-        # If the OS is Windows #
-        if os.name == 'nt':
-            # Format file path of current iteration #
-            current_file = f'{file_path}\\{file_name}.{file_ext}'
-        # If the OS is Linux #
-        else:
-            current_file = f'{file_path}/{file_name}.{file_ext}'
+
+        # Format the current file path #
+        current_file = file_path / f'{file_name}.{file_ext}'
 
         # If image file #
         if ext_type == 'IMAGE':
             # Get the image data #
-            img = cv2.imread(current_file)
+            img = cv2.imread(str(current_file.resolve()))
 
             # If jpg image #
             if file_ext == 'jpg':
@@ -188,20 +183,22 @@ def store_file(path_regex, curr_path: str):
                 file_string = base64.b64encode(cv2.imencode('.png', img)[1])
             # If unsupported image type #
             else:
-                return print_err('Image type error - Unsupported image file type detected', 2)
+                return print_err('Unsupported image file type detected', 2)
 
         # If text file #
         elif ext_type == 'TEXT':
-            with open(current_file, 'rb') as file:
+            with current_file.open('rb') as file:
                 file_string = base64.b64encode(file.read())
 
         # For other file types #
         else:
-            return print_err('Improper type - Unsupported file extension type detected', 2)
+            return print_err('Unsupported file extension type detected', 2)
 
-        insert_query = globs.db_store(DB_NAME, f'{file_name}.{file_ext}', file_path,
-                                      ext_type, file_string.decode())
-        query_handler(DB_NAME, insert_query)
+        # Get formatted query to store item in database #
+        insert_query = query_store_item()
+        # Store the current iteration in database #
+        query_handler(db_conn, insert_query, f'{file_name}.{file_ext}', str(file_path.resolve()),
+                      ext_type, file_string.decode())
 
         # Print success and delete stored file from Dock #
         print(f'File => {file_name}.{file_ext} Stored')
@@ -209,16 +206,17 @@ def store_file(path_regex, curr_path: str):
         # If the user wants the files deleted after storage #
         if prompt == 'y':
             # Delete the current file #
-            os.remove(current_file)
+            os.remove(str(current_file.resolve()))
 
-    return print(f'\n$ All files in {file_path} have been stored in {DB_NAME} database $')
+    return print(f'\n[!] All files in {str(file_path.resolve())} have been stored in {DB_NAME} '
+                 'database')
 
 
-def extract_file(file_path: str):
+def extract_file(db_conn: sqlite3):
     """
     Extracts file from the storage database to Dock.
 
-    :param file_path:  The path to the current working directory.
+    :param db_conn:  The protected database connection to be interacted with.
     :return:  Prints success or error message.
     """
     # Prompt user for file name/number and type #
@@ -232,16 +230,16 @@ def extract_file(file_path: str):
     # If the user entered a number #
     if file_name.isdigit():
         # Get the file name from specified row index #
-        file_name = get_by_index(int(file_name))
+        file_name = get_by_index(int(file_name), db_conn)
 
-    # Format query to list all the contents of storage database #
-    item_query = globs.db_retrieve(DB_NAME, file_name)
-    # Execute query to list the contents of storage database #
-    row = query_handler(DB_NAME, item_query, fetchone=True)
+    # Get formatted query to fetch an item #
+    item_query = query_item_fetch()
+    # Execute query to list contents of single file in storage database #
+    row = query_handler(db_conn, item_query, file_name, fetch='one')
 
     # If entry in storage database was noe retrieved #
     if not row:
-        return print_err('Database - Queried database entry does not exist', 2)
+        return print_err('Queried database entry does not exist', 2)
 
     # If the retrieved rows file extension is the same as users input #
     if row[2] == file_type:
@@ -249,69 +247,85 @@ def extract_file(file_path: str):
         file_string = row[3]
         # Decode from base64 #
         decoded_text = base64.b64decode(file_string)
-
-        # If the OS is Windows #
-        if os.name == 'nt':
-            extract_path = f'{file_path}Dock\\{file_name}'
-        # If the OS is Linux #
-        else:
-            extract_path = f'{file_path}Dock/{file_name}'
+        # Change back to dock directory #
+        os.chdir(str(dock_path.resolve()))
+        # Format the file to be extracted path #
+        extract_path = dock_path / file_name
 
         try:
-            with open(extract_path, 'wb') as out_file:
+            with extract_path.open('ab') as out_file:
                 out_file.write(decoded_text)
 
         # If file IO error occurs #
-        except (IOError, OSError) as io_err:
-            return print_err(f'File IO error occurred - {io_err}', 2)
+        except (IOError, OSError) as file_err:
+            logging.error('Error occurred during file operation: %s\n\n', file_err)
+            # Change back into base directory #
+            os.chdir(str(db_path.resolve()))
+            return print_err(f'Error occurred during file operation: {file_err}', 2)
+
     # If there is a file extension mismatch #
     else:
         return print_err(f'File type - Improper file extension entered for file name {row[2]}', 2)
 
+    # Change back into db directory #
+    os.chdir(str(db_path.resolve()))
+
     return print(f'\n$ {file_name} successfully extracted from {DB_NAME} database $')
 
 
-def list_storage():
+def list_storage(db_conn: sqlite3):
     """
     Queries database for list of all files and displays as enumerated list to the user.
 
+    :param db_conn:  The protected database connection to be interacted with.
     :return:  Nothing
     """
-    # Format query to list all the contents of storage database #
-    list_query = globs.db_contents(DB_NAME)
+    # Get formatted query to fetch all db contents #
+    list_query = query_select_all()
     # Execute query to list the contents of storage database #
-    rows = query_handler(DB_NAME, list_query, fetchall=True)
+    rows = query_handler(db_conn, list_query, fetch='all')
 
-    print('\nFiles Available:\n-=-=-=-=-=-=-=-=-=->')
-    [print(f'{index}  =>  {row[0]}') for index, row in enumerate(rows)]
+    count = 0
+    print(f'\nFiles Available:\n{"-=" * 12}->')
+
+    # Iterate through fetched data with corresponding index #
+    for index, row in enumerate(rows):
+        # If the line count is maxed #
+        if count == 60:
+            # Wait for user to continue and reset #
+            input('[+] Press enter to continue .. ')
+            count = 0
+
+        print(f'{index} => {row[0]}')
+        count += 1
+
     time.sleep(3)
 
 
-def main_menu(syntax_tuple: tuple, current_path: str):
+def main_menu(db_conn: sqlite3):
     """
     Display command options and receives input on what command to execute.
 
-    :param syntax_tuple:  Command syntax tuple.
-    :param current_path:  Path to current working directory.
+    :param db_conn:  The protected database connection to be interacted with.
     :return:  Nothing
     """
     # If OS is Windows #
     if os.name == 'nt':
         # Set path regex and clear display command syntax #
         re_path = re.compile(r'^[A-Z]:(?:\\[a-zA-Z\d_\"\' .,-]{1,30}){1,12}')
-        cmd = syntax_tuple[0]
+        cmd = quote('cls')
     # If OS is Linux #
     else:
         # Set path regex and clear display command syntax #
         re_path = re.compile(r'^(?:/[a-zA-Z\d_\"\' .,-]{1,30}){1,12}')
-        cmd = syntax_tuple[1]
+        cmd = quote('clear')
 
     # Set the program name banner #
-    custom_fig = Figlet(font='roman', width=130)
+    custom_fig = Figlet(font='larry3d', width=130)
 
     while True:
         # Clears screen per loop for clean display #
-        system_cmd(cmd, None, None, 2)
+        os.system(cmd)
 
         # Print the program name banner #
         print(custom_fig.renderText('$ File Database $'))
@@ -328,20 +342,20 @@ def main_menu(syntax_tuple: tuple, current_path: str):
         #--------------------------#
         ''')
 
-        prompt = input('#>>: ')
+        prompt = input('[Enter Command]::>> ')
 
         # If db contents are to be listed #
         if prompt == 'l':
-            list_storage()
+            list_storage(db_conn)
         # If file contents are to be retrieved #
         elif prompt == 'o':
-            extract_file(current_path)
+            extract_file(db_conn)
         # If file contents are to be stored #
         elif prompt == 's':
-            store_file(re_path, current_path)
+            store_file(re_path, db_conn)
         # If the file contents are to be deleted #
         elif prompt == 'd':
-            delete_file()
+            delete_file(db_conn)
         # If the program is to be exited #
         elif prompt == 'e':
             sys.exit(0)
@@ -359,47 +373,79 @@ def main():
 
     :return:  Nothing
     """
-    # Commands tuple #
-    cmds = ('cls', 'clear')
-
-    # Iterate through program dirs #
-    for curr_db in ('Dock', 'Dbs'):
-        # If the directory does not exist #
-        if not globs.dir_check(curr_db):
-            # Create the missing dir #
-            os.mkdir(curr_db)
+    # Assume database exists #
+    exists = True
+    # Switch into the database directory #
+    os.chdir(str(db_path.resolve()))
 
     try:
-        os.chdir('Dbs')
-        # Confirm database exists #
+        # Format the database file #
         db_name = f'{DB_NAME}.db'
+        # Format the database file into uri query #
         dburi = f'file:{pathname2url(db_name)}?mode=rw'
+        # Attempt to connect to the database #
         sqlite3.connect(dburi, uri=True)
-        os.chdir(cwd)
 
     # If storage database does not exist #
     except sqlite3.OperationalError:
-        os.chdir(cwd)
-        # Format storage database creation query #
-        create_query = globs.db_storage(DB_NAME)
-        # Create storage database #
-        query_handler(DB_NAME, create_query, create=True)
+        # Set boolean for database to be created #
+        exists = False
 
-    main_menu(cmds, path)
+    max_conns = 1
+    # Initialize semaphore instance to limit number of connections to database #
+    sema_lock = BoundedSemaphore(value=max_conns)
+
+    try:
+        # Acquire semaphore lock #
+        with sema_lock:
+            try:
+                # Initialize db connection context manager instance #
+                with DbConnectionHandler(f'{DB_NAME}.db') as connection:
+                    # If the database does not exist #
+                    if not exists:
+                        # Get formatted query to create database #
+                        create_query = query_db_create()
+                        # Create storage database #
+                        query_handler(connection, create_query, exec_script=True)
+
+                    # Pass base path and db connection in main #
+                    main_menu(connection)
+
+            # If any sqlite3 error occurs during database operation #
+            except sqlite3.Error as db_err:
+                # Lookup exact database error to log and exit #
+                db_error_query(db_err)
+                sys.exit(2)
+
+    # If semaphore is attempting to allocate more resources than allowed #
+    except ValueError as val_err:
+        # Log error and exit #
+        logging.error('Database connection semaphore error attempted to acquire more than '
+                      'allowed max value %d: %s\n\n', max_conns, val_err)
+        sys.exit(1)
+
+    # Switch back to base directory #
+    os.chdir(str(path.resolve()))
 
 
 if __name__ == '__main__':
     # Get the current working directory #
-    cwd = os.getcwd()
-
-    # If the OS is Windows #
-    if os.name == 'nt':
-        path = f'{cwd}\\'
-    else:
-        path = f'{cwd}/'
-
+    cwd = Path('.')
+    path = Path(str(cwd.resolve()))
+    db_path = path / 'Dbs'
+    dock_path = path / 'Dock'
+    log_file = path / 'filedb_log.log'
     # Set the log file name #
-    logging.basicConfig(level=logging.DEBUG, filename=f'{path}FileDbLog.log')
+    logging.basicConfig(filename=str(log_file.resolve()),
+                        format='%(asctime)s line%(lineno)d::%(funcName)s[%(levelname)s]>>'
+                               ' %(message)s', datefmt='%Y-%m-%d %H:%M:%S')
+
+    # Iterate through program dirs #
+    for curr_path in (db_path, dock_path):
+        # If the directory does not exist #
+        if not curr_path.exists():
+            # Create the missing dir #
+            curr_path.mkdir()
 
     while True:
         try:
@@ -407,7 +453,7 @@ if __name__ == '__main__':
 
         # If Ctrl + C is detected #
         except KeyboardInterrupt:
-            print('\n Ctrl + C detected .. exiting')
+            print('\n\n[!] Ctrl + C detected .. exiting')
             break
 
         # Unknown exception handler #

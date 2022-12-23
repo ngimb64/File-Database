@@ -15,7 +15,7 @@ Dock/*
 !Dock/.keep
 
 # Log file #
-FileDbLog.log
+filedb_log.log
 
 # Pycache #
 Modules/__pycache__/
