@@ -1,16 +1,16 @@
-# File Database #
+<div align="center" style="font-family: monospace">
+<h1>File Database</h1>
+&#9745;&#65039; Bandit verified &nbsp;|&nbsp; &#9745;&#65039; Synk verified &nbsp;|&nbsp; &#9745;&#65039; Pylint verified 9.93/10
+</div><br>
+
 ![alt text](https://github.com/ngimb64/File-Database/blob/main/FileDatabase.gif?raw=true)
 ![alt text](https://github.com/ngimb64/File-Database/blob/main/FileDatabase.png?raw=true)
 
-&#9745;&#65039; Bandit verified<br>
-&#9745;&#65039; Synk verified<br>
-&#9745;&#65039; Pylint verified 9.93/10
+## Purpose
+This program is a local file storage database for storage utilizing the MySQL standard query language.
 
 ## Prereqs
 This program runs on Windows 10 and Debian-based Linux, written in Python 3.9 and updated to version 3.10.6
-
-## Purpose
-This program is a local file storage database for storage utilizing the MySQL standard query language.
 
 ## Installation
 - Run the setup.py script to build a virtual environment and install all external packages in the created venv.
@@ -65,10 +65,10 @@ This program is a local file storage database for storage utilizing the MySQL st
 
 ## Exit Codes
 -- file_database.py --
-> 0 - Successful operation (__main__, main_menu)
-> 1 - Error occurred acquiring semaphore for database connection (main)
+> 0 - Successful operation (__main__, main_menu)<br>
+> 1 - Error occurred acquiring semaphore for database connection (main)<br>
 > 2 - Critical error occurred during database operation (main)
 
 -- utils.py --
-> 3 - Passed in MySQL query is not a complete statement (query_handler)
+> 3 - Passed in MySQL query is not a complete statement (query_handler)<br>
 > 4 - Fetch flag was set to unknown value (query_handler)
