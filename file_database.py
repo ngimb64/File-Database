@@ -10,7 +10,6 @@ import time
 from pathlib import Path
 from shlex import quote
 from threading import BoundedSemaphore
-from urllib.request import pathname2url
 # External Modules #
 import cv2
 from pyfiglet import Figlet
@@ -50,7 +49,7 @@ def get_by_index(file: int, db_conn: sqlite3):
 
     # If trying to access index that does not exist #
     except IndexError as index_err:
-        logging.error('Index error accessing file index: %s\n\n', index_err)
+        logging.error('Index error accessing file index: %s', index_err)
         return print_err(f'Index error accessing file index: {index_err}', 2)
 
     return filename
@@ -92,12 +91,10 @@ def store_file(path_regex, db_conn: sqlite3):
     :param db_conn:  The protected database connection to be interacted with.
     :return:  Prints success or error message.
     """
-    name, ext = [], []
-
     store_path = input('Enter the absolute path of directory to store files or '
                        'hit enter to store files from the Dock directory:\n')
     prompt = input('\nShould the files being stored be deleted after storage operation (y or n)? ')
-    print('')
+    print()
 
     # If one of the options was not selected #
     if prompt not in ('y', 'n'):
@@ -115,15 +112,15 @@ def store_file(path_regex, db_conn: sqlite3):
     else:
         file_path = Path(store_path)
 
+    name, ext = [], []
     allowed_ext = ('.txt', '.py', '.html', '.jpg', '.png', '.jpeg')
     extensions = {'txt': 'TEXT', 'py': 'TEXT', 'html': 'TEXT', 'jpg': 'IMAGE',
                   'png': 'IMAGE', 'jpeg': 'IMAGE'}
 
-    print(f'Storing files in {str(file_path.resolve())}:\n'
-          f'{(19 + len(str(file_path.resolve()))) * "*"}\n')
+    print(f'Storing files in {file_path}:\n{(19 + len(str(file_path))) * "*"}\n')
 
     # Iterate through the file names in path #
-    for file in os.scandir(str(file_path.resolve())):
+    for file in os.scandir(file_path):
         # If file does not have supported file type #
         if not file.name.endswith(allowed_ext):
             continue
@@ -145,7 +142,7 @@ def store_file(path_regex, db_conn: sqlite3):
             src_file = file_path / file.name
             dest_file = file_path / f'{parse_name}.{file_ext}'
             # Rename the file to new name #
-            os.rename(str(src_file.resolve()), str(dest_file.resolve()))
+            os.rename(src_file, dest_file)
 
         # If the file name only has a single period for file ext #
         else:
@@ -156,11 +153,10 @@ def store_file(path_regex, db_conn: sqlite3):
 
     # Iterate through file names and extensions #
     for file_name, file_ext in zip(name, ext):
-        # If current file extension in defined dict #
-        if file_ext in extensions:
+        try:
             ext_type = extensions[file_ext]
         # If file extension not in defined dict #
-        else:
+        except KeyError:
             return print_err(f'File {file_name} has extension type '
                              f'{file_ext} that is not supported', 2)
 
@@ -170,7 +166,7 @@ def store_file(path_regex, db_conn: sqlite3):
         # If image file #
         if ext_type == 'IMAGE':
             # Get the image data #
-            img = cv2.imread(str(current_file.resolve()))
+            img = cv2.imread(str(current_file))
 
             # If jpg image #
             if file_ext == 'jpg':
@@ -197,7 +193,7 @@ def store_file(path_regex, db_conn: sqlite3):
         # Get formatted query to store item in database #
         insert_query = query_store_item()
         # Store the current iteration in database #
-        query_handler(db_conn, insert_query, f'{file_name}.{file_ext}', str(file_path.resolve()),
+        query_handler(db_conn, insert_query, f'{file_name}.{file_ext}', str(file_path),
                       ext_type, file_string.decode())
 
         # Print success and delete stored file from Dock #
@@ -206,9 +202,9 @@ def store_file(path_regex, db_conn: sqlite3):
         # If the user wants the files deleted after storage #
         if prompt == 'y':
             # Delete the current file #
-            os.remove(str(current_file.resolve()))
+            current_file.unlink()
 
-    return print(f'\n[!] All files in {str(file_path.resolve())} have been stored in {DB_NAME} '
+    return print(f'\n[!] All files in {file_path} have been stored in {DB_NAME} '
                  'database')
 
 
@@ -247,8 +243,6 @@ def extract_file(db_conn: sqlite3):
         file_string = row[3]
         # Decode from base64 #
         decoded_text = base64.b64decode(file_string)
-        # Change back to dock directory #
-        os.chdir(str(dock_path.resolve()))
         # Format the file to be extracted path #
         extract_path = dock_path / file_name
 
@@ -256,19 +250,14 @@ def extract_file(db_conn: sqlite3):
             with extract_path.open('ab') as out_file:
                 out_file.write(decoded_text)
 
-        # If file IO error occurs #
-        except (IOError, OSError) as file_err:
+        # If error occurs during file operation #
+        except OSError as file_err:
             logging.error('Error occurred during file operation: %s\n\n', file_err)
-            # Change back into base directory #
-            os.chdir(str(db_path.resolve()))
             return print_err(f'Error occurred during file operation: {file_err}', 2)
 
     # If there is a file extension mismatch #
     else:
         return print_err(f'File type - Improper file extension entered for file name {row[2]}', 2)
-
-    # Change back into db directory #
-    os.chdir(str(db_path.resolve()))
 
     return print(f'\n$ {file_name} successfully extracted from {DB_NAME} database $')
 
@@ -373,42 +362,23 @@ def main():
 
     :return:  Nothing
     """
-    # Assume database exists #
-    exists = True
-    # Switch into the database directory #
-    os.chdir(str(db_path.resolve()))
-
-    try:
-        # Format the database file #
-        db_name = f'{DB_NAME}.db'
-        # Format the database file into uri query #
-        dburi = f'file:{pathname2url(db_name)}?mode=rw'
-        # Attempt to connect to the database #
-        sqlite3.connect(dburi, uri=True)
-
-    # If storage database does not exist #
-    except sqlite3.OperationalError:
-        # Set boolean for database to be created #
-        exists = False
-
     max_conns = 1
     # Initialize semaphore instance to limit number of connections to database #
     sema_lock = BoundedSemaphore(value=max_conns)
-
     try:
         # Acquire semaphore lock #
         with sema_lock:
             try:
                 # Initialize db connection context manager instance #
-                with DbConnectionHandler(f'{DB_NAME}.db') as connection:
-                    # If the database does not exist #
+                with DbConnectionHandler(db_path[0]) as connection:
+                    # If the database did not exist on start #
                     if not exists:
                         # Get formatted query to create database #
                         create_query = query_db_create()
                         # Create storage database #
                         query_handler(connection, create_query, exec_script=True)
 
-                    # Pass base path and db connection in main #
+                    # Pass db connection in main #
                     main_menu(connection)
 
             # If any sqlite3 error occurs during database operation #
@@ -421,24 +391,20 @@ def main():
     except ValueError as val_err:
         # Log error and exit #
         logging.error('Database connection semaphore error attempted to acquire more than '
-                      'allowed max value %d: %s\n\n', max_conns, val_err)
+                      'allowed max value %d: %s', max_conns, val_err)
         sys.exit(1)
-
-    # Switch back to base directory #
-    os.chdir(str(path.resolve()))
 
 
 if __name__ == '__main__':
     # Get the current working directory #
-    cwd = Path('.')
-    path = Path(str(cwd.resolve()))
+    path = Path.cwd()
     db_path = path / 'Dbs'
     dock_path = path / 'Dock'
     log_file = path / 'filedb_log.log'
     # Set the log file name #
-    logging.basicConfig(filename=str(log_file.resolve()),
-                        format='%(asctime)s line%(lineno)d::%(funcName)s[%(levelname)s]>>'
-                               ' %(message)s', datefmt='%Y-%m-%d %H:%M:%S')
+    logging.basicConfig(filename=log_file,
+                        format='%(asctime)s %(lineno)4d@%(filename)-19s[%(levelname)s]>>  '
+                               '%(message)s', datefmt='%Y-%m-%d %H:%M:%S')
 
     # Iterate through program dirs #
     for curr_path in (db_path, dock_path):
@@ -446,6 +412,11 @@ if __name__ == '__main__':
         if not curr_path.exists():
             # Create the missing dir #
             curr_path.mkdir()
+
+    # After database dir is created set it to db name #
+    db_path = (path / 'Dbs' / f'{DB_NAME}.db',)
+    # If the database does not exist set to False, otherwise True #
+    exists = False if not db_path[0].exists() else True
 
     while True:
         try:
@@ -459,7 +430,7 @@ if __name__ == '__main__':
         # Unknown exception handler #
         except Exception as err:
             print_err(f'Unknown exception occurred - {err}', 2)
-            logging.exception('Unknown exception occurred - %s\n\n', err)
+            logging.exception('Unknown exception occurred - %s', err)
             continue
 
     sys.exit(0)

@@ -51,7 +51,7 @@ def query_handler(connection, query, *args, exec_script=None, fetch=None):
     """
     # If the passed in MySQL query was not a complete statement #
     if not sqlite3.complete_statement(query):
-        logging.error('Passed in query is not a complete MySQL statement: %s\n\n', query)
+        logging.error('Passed in query is not a complete MySQL statement: %s', query)
         print_err(f'Passed in query is not a complete MySQL statement: {query}', None)
         sys.exit(3)
 
@@ -73,25 +73,23 @@ def query_handler(connection, query, *args, exec_script=None, fetch=None):
             # Execute SQL script #
             db_call = connection.executescript(query)
 
+        # If the fetch flag is at default "None" #
+        if not fetch:
+            return None
+
         # If the fetch flag is set to "one" #
         if fetch == 'one':
             # Return fetched row #
             return db_call.fetchone()
 
         # If the fetch flag is set to "all" #
-        elif fetch == 'all':
+        if fetch == 'all':
             # Return all fetched rows #
             return db_call.fetchall()
 
-        # If the fetch flag is at default "None" #
-        elif not fetch:
-            return None
-
-        # If the fetch flag has been set to unknown value #
-        else:
-            logging.error('Fetch flag is set to unexpected value: %s\n\n', fetch)
-            print_err(f'Fetch flag is set to unexpected value: {fetch}', None)
-            sys.exit(4)
+        logging.error('Fetch flag is set to unexpected value: %s', fetch)
+        print_err(f'Fetch flag is set to unexpected value: {fetch}', None)
+        sys.exit(4)
 
 
 def db_error_query(db_error):
@@ -103,48 +101,48 @@ def db_error_query(db_error):
     """
     # If query is not a string or multiple queries are passed to execute() #
     if db_error == sqlite3.Warning:
-        logging.warning('Db sqlite3 warning: %s\n\n', db_error)
+        logging.warning('Db sqlite3 warning: %s', db_error)
         print_err(f'Db sqlite warning: {db_error}', None)
 
     # If error occurs during fetch across rollback or is unable to bind parameters #
     elif db_error == sqlite3.InterfaceError:
-        logging.error('Db interface error: %s\n\n', db_error)
+        logging.error('Db interface error: %s', db_error)
         print_err(f'Db interface error: {db_error}', None)
 
     # If data-related error occurs, such as number out of range and overflowed strings #
     elif db_error == sqlite3.DataError:
-        logging.error('Db data-related error: %s\n\n', db_error)
+        logging.error('Db data-related error: %s', db_error)
         print_err(f'Db data-related error: {db_error}', None)
 
     # If database operation error occurs, such as a database path not being found or the failed
     # processing of a transaction #
     elif db_error == sqlite3.OperationalError:
-        logging.error('Db operational error: %s\n\n', db_error)
+        logging.error('Db operational error: %s', db_error)
         print_err(f'Db operational error: {db_error}', None)
 
     # If database relational integrity is affected #
     elif db_error == sqlite3.IntegrityError:
-        logging.error('Db relational integrity error: %s\n\n', db_error)
+        logging.error('Db relational integrity error: %s', db_error)
         print_err(f'Db relational integrity error: {db_error}', None)
 
     # If sqlite3 internal error occurs, suggesting a potential runtime library issue #
     elif db_error == sqlite3.InternalError:
-        logging.error('Db sqlite3 internal runtime error: %s\n\n', db_error)
+        logging.error('Db sqlite3 internal runtime error: %s', db_error)
         print_err(f'Db sqlite3 internal runtime error: {db_error}', None)
 
     # If sqlite3 API error occurs, such as trying to operate on a closed connection #
     elif db_error == sqlite3.ProgrammingError:
-        logging.error('Db sqlite3 APi operational error: %s\n\n', db_error)
+        logging.error('Db sqlite3 APi operational error: %s', db_error)
         print_err(f'Db sqlite3 API operational error: {db_error}', None)
 
     # If a called API method is not supported by the underlying SQLite3 runtime library #
     elif db_error == sqlite3.NotSupportedError:
-        logging.error('Db API not supported by sqlite3 runtime library: %s\n\n', db_error)
+        logging.error('Db API not supported by sqlite3 runtime library: %s', db_error)
         print_err(f'Db API not supported by sqlite3 runtime library: {db_error}', None)
 
     # If unexpected error occurs (shouldn't happen, just in case) #
     else:
-        logging.exception('Unexpected database exception: %s\n\n', db_error)
+        logging.exception('Unexpected database exception: %s', db_error)
         print_err(f'Unexpected database exception: {db_error}', None)
 
 
